@@ -1,0 +1,515 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<title>COMP9315 19T2 - Assignment 1</title>
+<link rel='stylesheet' type='text/css' href='https://cgi.cse.unsw.edu.au/~cs9315/19T2/course.css'></head>
+<body>
+<div align='center'>
+<table width='100%' border='0'>
+<tr valign='top'>
+<td align='left' width='25%'>
+  <span class='tiny'><a href="https://cgi.cse.unsw.edu.au/~cs9315/19T2/index.php">COMP9315 19T2</a></span>
+</td>
+<td align='center' width='50%'>
+  <span class='heading'>Assignment 1</span><br><b>Adding an Email Data Type to PostgreSQL</b>
+</td>
+<td align='right' width='25%'>
+  <span class='tiny'><a href="https://cgi.cse.unsw.edu.au/~cs9315/19T2/index.php">DBMS Implementation</a></span>
+</td>
+</table>
+</div><div style="text-align:center;font-size:80%;color:#555555;margin-top:5px;">
+Last updated: <strong>Saturday 29th June 12:23pm</strong> <br />
+Most recent changes are shown in <span class="red">red</span>; <br />
+older changes are shown in <span class="brown">brown</span>.
+</div>
+<h2>Aims</h2>
+<p>
+This assignment aims to give you
+</p>
+<ul>
+<li> an understanding of how data is treated inside a DBMS
+<li> practice in adding a new base type to PostgreSQL
+</ul>
+<p>
+The goal is to implement a new data type for PostgreSQL, complete
+with input/output functions, comparison operators and the ability
+to build indexes on values of the type.
+</p>
+
+<h2>Summary</h2>
+
+<dl class="dl-horizontal">
+<dt>Deadline</dt>
+  <dd>Sunday 7 July, 11:59pm</dd>
+<br>
+<dt>Pre-requisites:</dt>
+  <dd>before starting this assignment,
+  it would be useful to complete
+  <a href="https://cgi.cse.unsw.edu.au/~cs9315/19T2/pracs/p04/">Prac Work P04</a></dd>
+<br>
+<dt>Late Penalty:</dt>
+  <dd>0.08 <em>marks</em> off the ceiling mark for each <em>hour</em> late</dd>
+<br>
+<dt>Marks:</dt>
+  <dd> This assignment contributes <b>13 marks</b> toward your total mark for this course.</dd>
+<br>
+<dt>Submission:</dt>
+  <dd><a href="https://webcms3.cse.unsw.edu.au/COMP9315/19T2/">Webcms3</a>
+  &gt; Assignments &gt; Ass1 Submission &gt; Make Submission
+  <br>
+  or, on CSEmachines, <code>give cs9315 ass1 email.c email.source</code></dd>
+</dl>
+<p>
+Make sure that you read this assignment specification <em>carefully and
+completely</em> before starting work on the assignment.<br>
+Questions which indicate that you haven't done this will simply get the
+response "Please read the spec".
+</p>
+<p>
+We use the following names in the discussion below
+</p>
+<ul>
+<li> <tt><i>PG_CODE</i></tt> ...  the directory where your PostgreSQL source code is located
+	&nbsp; <small>(typically <tt>/srvr/<i>YOU</i>/postgresql-11.3/</tt>)</small>
+<li> <tt><i>PG_HOME</i></tt> ... the directory where you have installed the PostgreSQL binaries
+	&nbsp; <small>(typically <tt>/srvr/<i>YOU</i>/pgsql/bin/</tt>)</small>
+<li> <tt><i>PG_DATA</i></tt> ... the directory where you have placed PostgreSQL's <tt>data</tt>
+	&nbsp; <small>(typically <tt>/srvr/<i>YOU</i>/pgsql/data/</tt>)</small>
+<li> <tt><i>PG_LOG</i></tt> ... the file where you send PostgreSQL's log output
+	&nbsp; <small>(typically <tt>/srvr/<i>YOU</i>/pgsql/data/log/</tt>)</small>
+</ul>
+
+<h2>Introduction</h2>
+
+<p>
+PostgreSQL has an extensibility model which, among other things,
+provides a well-defined process for adding new data types into
+a PostgreSQL server.
+This capability has led to the development by PostgreSQL users
+of a number of types (such as polygons) which have become part
+of the standard distribution.
+It also means that PostgreSQL is the database of choice in research
+projects which aim to push the boundaries of what kind of data a
+DBMS can manage.
+</p>
+<p>
+In this assignment, we will be adding a new data type for dealing
+with <b>email addresses</b>.
+You may implement the functions for the data type in any way you like
+<em>provided that</em> they satisfy the semantics given below (in the
+<a href="#semantics">Email Address Data Type</a> section).
+</p>
+<p>
+The process for adding new base data types in PostgreSQL is described
+in the following sections of the PostgreSQL documentation:
+</p>
+<ul>
+<li> <a target="_blank" href="https://cgi.cse.unsw.edu.au/~cs9315/19T2/postgresql/documentation/xtypes.html">38.12 User-defined Types</a>
+<li> <a target="_blank" href="https://cgi.cse.unsw.edu.au/~cs9315/19T2/postgresql/documentation/xfunc-c.html">38.10 C-Language Functions</a>
+<li> <a target="_blank" href="https://cgi.cse.unsw.edu.au/~cs9315/19T2/postgresql/documentation/xoper.html">38.13 User-defined Operators</a>
+<li> <a target="_blank" href="https://cgi.cse.unsw.edu.au/~cs9315/19T2/postgresql/documentation/sql-createtype.html">SQL: CREATE TYPE</a>
+<li> <a target="_blank" href="https://cgi.cse.unsw.edu.au/~cs9315/19T2/postgresql/documentation/sql-createoperator.html">SQL: CREATE OPERATOR</a>
+<li> <a target="_blank" href="https://cgi.cse.unsw.edu.au/~cs9315/19T2/postgresql/documentation/sql-createopclass.html">SQL: CREATE OPERATOR CLASS</a>
+</ul>
+<p>
+Section 38.12 uses an example of a complex number type, which you can use as
+a starting point for defining your <tt>EmailAddr</tt> data type (see below).
+There are other examples of new data types under the directories:
+</p>
+<ul>
+<li> <tt><i>PG_CODE</i>/contrib/chkpass/</tt> ... an auto-encrypted password datatype
+<li> <tt><i>PG_CODE</i>/contrib/citext/</tt> ... a case-insensitive character string datatype
+<li> <tt><i>PG_CODE</i>/contrib/seg/</tt> ... a confidence-interval datatype
+</ul>
+<p>
+These may or may not give you some useful ideas on how to implement the
+Email address data type.
+</p>
+
+<h2>Setting Up</h2>
+
+<p>
+You ought to start this assignment with a fresh copy of PostgreSQL,
+without any changes that you might have made for the Prac exercises
+(unless these changes are trivial).
+Note that you only need to configure, compile and install your
+PostgreSQL server once for this assignment.
+All subsequent compilation takes place in the <tt>src/tutorial</tt>
+directory, and only requires modification of the files there.
+</p>
+<p>
+Once you have re-installed your PostgreSQL server, you should run
+the following commands:
+</p>
+<pre>
+$ <b>cd <i>PG_CODE</i>/src/tutorial</b>
+$ <b>cp complex.c email.c</b>
+$ <b>cp complex.source email.source</b>
+</pre>
+<p>
+Once you've made the <tt>email.*</tt> files, you should also edit the
+<tt>Makefile</tt> in this directory and add the
+<span class="green">green</span> text to the following lines:
+</p>
+<pre>
+MODULES = complex funcs <span class="green">email</span>
+DATA_built = advanced.sql basics.sql complex.sql funcs.sql syscat.sql <span class="green">email.sql</span>
+</pre>
+<p>
+The rest of the work for this assignment involves editing only the
+<tt>email.c</tt> and <tt>email.source</tt> files.
+In order for the <tt>Makefile</tt> to work properly, you must use
+the identifier <tt>_OBJWD_</tt> in the <tt>email.source</tt> file
+to refer to the directory holding the compiled library.
+You should never modify directly the <tt>email.sql</tt> file produced
+by the <tt>Makefile</tt>.
+Place <em>all</em> of you C code in the <tt>email.c</tt> file;
+do not create any other <code>*.c</code> files.
+</p>
+<p>
+Note that your submitted versions of <tt>email.c</tt> and <tt>email.source</tt>
+should not contain any references to the <tt>complex</tt> type. Make sure that
+the documentation (comments in program) describes the code that <i>you</i>
+wrote.
+</p>
+
+<a name="semantics"></a>
+<h2>The Email Address Data Type</h2>
+
+<p>
+We wish to define a new base type <tt>EmailAddr</tt> to represent
+RFC822-style email addresses (actually a subset of RFC822).
+We also aim to define a useful set of operations on values of type
+<tt>EmailAddr</tt> and wish to be able to create indexes on <tt>EmailAddr</tt>
+attributes.
+How you represent <tt>EmailAddr</tt> values internally, and how you
+implement the functions to manipulate them internally, is up to you.
+However, they must satisfy the requirements below.
+</p>
+<p>
+Once implemented correctly, you should be able to use your PostgreSQL
+server to build the following kind of SQL applications:
+</p>
+<pre>
+create table UserSessions (
+   username  EmailAddr,
+   loggedIn  timestamp,
+   loggedOut timestamp
+   -- etc. etc.
+);
+
+insert into UserSessions(username,loggedIn,loggedOut) values
+('jas@cse.unsw.edu.au','2012-07-01 15:45:55','2012-07-01 15:51:20'),
+('jas@cse.unsw.EDU.AU','2012-07-01 15:50:30','2012-07-01 15:53:15'),
+('z9987654@unsw.edu.au','2012-07-01 15:51:10','2012-07-01 16:01:05'),
+('m.mouse@disney.com','2012-07-01 15:51:11','2012-07-01 16:01:06'),
+('a-user@fast-money.com','2012-07-01 15:52:25','2012-07-01 16:10:15');
+
+create index on UserSessions using hash (username);
+
+select a.username, a.loggedIn, b.loggedIn
+from   UserSessions a, UserSessions b
+where  a.uname = b.uname and a.loggedIn &lt;&gt; b.loggedIn;
+
+select path,count(*)
+from   Users
+group  by path;
+</pre>
+<p>
+Having defined a hash-based file structure, we would expect that the
+queries would make use of it. You can check this by adding the keyword
+<tt>EXPLAIN</tt> before the query, e.g.
+</p>
+<pre>
+db=# <b>explain analyze select * from UserSessions where username='a@b.com';</b>
+</pre>
+<p>
+which should, once you have correctly implemented the data type
+and loaded sufficient data, show that an index-based scan of the
+data is being used.
+</p>
+
+<h3>Email address values</h3>
+
+<p>
+The precise format of email addresses is defined in the
+<a href="http://www.w3.org/Protocols/rfc822/">RFC822 standard</a>,
+which describes the overall structure of emails (headers,
+content format, etc.), including addresses.
+An alternative, and perhaps more user-friendly, description of
+email addresses can be found on
+<a href="http://en.wikipedia.org/wiki/Email_address">Wikipedia</a>.
+We will implement a subset of the RFC822 address standard,
+which can described as follows:
+<ul>
+<li>
+an email address has two parts, Local and Domain, separated by an
+'@' char
+<li>
+both the Local part and the Domain part consist of a sequence of
+Words, separated by '.' characters
+<li>
+the Local part has one or more Words;
+the Domain part has two or more Words (i.e. at least one '.')
+<li>
+each Word is a sequence of one or more characters, starting with a letter
+<li>
+each Word ends with a letter or a digit
+<li>
+between the starting and ending chars, there may be any number of letters,
+digits or hyphens ('-')
+</ul>
+A more precise definition can be given using a BNF grammar:
+</p>
+<pre>
+EmailAddr ::= Local '@' Domain
+
+Local        ::= NamePart NameParts
+
+Domain       ::= NamePart '.' NamePart NameParts
+
+NamePart     ::= Letter | Letter NameChars (Letter|Digit)
+
+NameParts    ::= Empty | '.' NamePart NameParts
+
+NameChars    ::= Empty | (Letter|Digit|'-') NameChars
+
+Letter       ::= 'a' | 'b' | ... | 'z' | 'A' | 'B' | ... 'Z'
+Digit        ::= '0' | '1' | '2' | ... | '8' | '9'
+</pre>
+<p>
+You may assume that the maximum length of the Local part is 256 chars,
+and that the maximum length of the Domain part is also 256 chars.
+</p>
+<p>
+Under this syntax, the following are valid email addresses:
+</p>
+<pre>
+jas@cse.unsw.edu.au
+john-shepherd@hotmail.com
+john.a.shepherd@gmail.com
+J.Shepherd@unsw.edu.au
+j.a.shepherd@acm.org
+j-a-shepherd@bargain-hunter.com
+jas@a-very-silly-domain.org
+john1988@my-favourite.org
+x-1@gmail.com
+a@b.c.com
+</pre>
+<p>
+The following addresses are not valid in our system,
+despite some of them being allowed under RFC822:
+</p>
+<pre>
+jas@cse
+"jas"@cse.unsw.edu.au
+j..shepherd@funny.email.org
+123jas@marketing.abc.com
+john@123buynow.com.au
+john@cse.unsw@edu.au
+x--@gmail.com
+</pre>
+<p>
+Think about why each of the above is invalid in terms of the
+syntax definition For example, <tt>jas@cse</tt> is invalid
+because the domain part is required to have at least two
+dot-separated components (in our system, we are dealing only
+with full domain names).
+Another example: <tt>123jas</tt> is invalid because each
+part of a name must start with a letter.
+</p>
+<p>
+<b>Important</b>: for this assignment, we define an ordering on
+email addresses as follows:
+</p>
+<ul>
+<li> the ordering is determined initially by the ordering on the Domain parts
+<li> if the Domains are equal, then the ordering is determined by the Local parts
+<li> ordering of parts is determined lexically and is case-insensitive
+</ul>
+<p>
+There are examples of how this works in the section on
+<a href="#operations">Operations on email addresses</a> below.
+</a>
+
+<h3>Representing email addresses</h3>
+<p>
+The first thing you need to do is to decide on an internal representation
+for your <tt>EmailAddr</tt> data type.
+You should do this, however, after you have looked at the description of
+the operators below, since what they require may affect how you decide
+to structure your internal <tt>EmailAddr</tt> values.
+You should also take into account that email addresses are to be
+treated as case-insensitive. E.g. all of the following addresses
+are equivalent:
+</p>
+<pre>
+jas@cse.unsw.edu.au   jas@cse.unsw.EDU.AU   JAS@cse.unsw.EDU.AU
+JaS@CsE.UnSw.eDu.aU   jAs@CSE.UNSW.edu.au   jas@CSE.unsw.EDU.au
+</pre>
+<p>
+The <em>canonical form</em> of an email address is one in which all
+letters are lower-case, e.g. the first address above.
+At the SQL level, email addresses are entered and displayed as SQL
+strings. These strings will not necessarily be in
+canonical form when they are entered via a database client.
+</p>
+<p>
+When you read strings representing <tt>EmailAddr</tt> values, they
+are converted into your internal form, stored in the database in this form,
+and operations on <tt>EmailAddr</tt> values are carried out using this
+data structure.
+When you display <tt>EmailAddr</tt> values, you should show them in
+canonical form, regardless of how they were entered or how they are stored.
+<p>
+The first functions you need to write are ones to read and display
+values of type <tt>EmailAddr</tt>. You should write analogues of the
+functions <tt>complex_in()</tt>, <tt>complex_out</tt> that are defined
+in the file <tt>complex.c</tt>.
+Make sure that you use the <tt>V1</tt> style function interface (as is
+done in <tt>complex.c</tt>).
+</p>
+<p>
+Note that the two input/output functions should be complementary, meaning
+that any string displayed by the output function must be able to be read
+using the input function.
+There is no requirement for you to retain the precise string that was
+used for input (e.g. you could store the <tt>EmailAddr</tt> value
+internally in canonical form).
+</p>
+<p>
+If you want to use an open-source email address parser from the Net,
+that's fine, but you will most likely need to modify it so that it
+only accepts valid addresses as defined by the grammar above.
+If you include in your submission an email parser and if it accepts
+email addresses that are not valid according to our grammar, you
+will lose marks.
+You must insert all of the parser code in the <tt>email.c</tt> file.
+</p>
+<p>
+Note that you are <em>not</em> required to define binary input/output functions,
+called <tt>receive_function</tt> and <tt>send_function</tt> in the
+PostgreSQL documentation, and called <tt>complex_send</tt> and
+<tt>complex_recv</tt> in the <tt>complex.c</tt>file.
+</p>
+<p>
+A possible representation for <tt>EmailAddr</tt> values would involve
+fixed-size buffer(s), large enough to hold the longest possible email
+address: 256 + 256 + '@' + ...
+However, this is a poor representation because most email addresses
+are much shorter than 512+ characters.
+Using a fixed-size representation for <tt>EmailAddr</tt> limits your
+maximum possible mark to 8/13.
+</p>
+
+<a name="operations"></a>
+<h3>Operations on email addresses</h3>
+<p>
+You must implement all of the following operations for the <tt>EmailAddr</tt>
+type:
+<ul>
+<li>
+<p>
+<b><i>Email<sub>1</sub> = Email<sub>2</sub></i></b> ...
+two email addresses are equivalent
+</p>
+<p>
+Two email addresses are equivalent if, in their
+canonical forms, they have the same Local part and the same Domain part.
+</p>
+<pre>
+Email<sub>1</sub>: jas@cse.unsw.edu.au
+Email<sub>2</sub>: jas@cse.unsw.EDU.AU
+Email<sub>3</sub>: jas@abc.mail.com
+Email<sub>4</sub>: richard@cse.unsw.EDU.AU
+
+(Email<sub>1</sub> = Email<sub>1</sub>) is true
+(Email<sub>1</sub> = Email<sub>2</sub>) is true
+(Email<sub>2</sub> = Email<sub>1</sub>) is true        <i>(commutative)</i>
+(Email<sub>2</sub> = Email<sub>3</sub>) is false
+(Email<sub>2</sub> = Email<sub>4</sub>) is false
+</pre>
+<li>
+<p>
+<b><i>Email<sub>1</sub> &gt; Email<sub>2</sub></i></b> ...
+the first email address is greater than the second
+<p>
+<i>Email<sub>1</sub></i> is greater than <i>Email<sub>2</sub></i> if,
+in their canonical forms,
+the Domain part of <i>Email<sub>1</sub></i> lexically greater
+than the Domain part of <i>Email<sub>2</sub></i>.
+If the Domain parts are equal, then <i>Email<sub>1</sub></i> is greater than <i>Email<sub>2</sub></i> if the Local part of <i>Email<sub>1</sub></i>
+is lexically greater than the Local part of <i>Email<sub>2</sub></i>.
+</p>
+<pre>
+Email<sub>1</sub>: jas@cse.unsw.edu.au
+Email<sub>2</sub>: jas@cse.unsw.EDU.AU
+Email<sub>3</sub>: jas@abc.mail.com
+Email<sub>4</sub>: richard@cse.unsw.EDU.AU
+
+(Email<sub>1</sub> &gt; Email<sub>2</sub>) is false
+(Email<sub>1</sub> &gt; Email<sub>3</sub>) is true
+(Email<sub>2</sub> &gt; Email<sub>3</sub>) is true
+(Email<sub>1</sub> &gt; Email<sub>1</sub>) is false
+(Email<sub>4</sub> &gt; Email<sub>3</sub>) is true
+</pre>
+<li>
+<p>
+<b><i>Email<sub>1</sub> ~ Email<sub>2</sub></i></b> ...
+Email addresses have the same Domain <small>(note: the operator is a tilde, <em>not</em> a minus sign)</small>
+<p>
+Two email addresses come from the same Domain if their Doman parts are equal.
+</p>
+<pre>
+Email<sub>1</sub>: jas@cse.unsw.edu.au
+Email<sub>2</sub>: jas@cse.unsw.EDU.AU
+Email<sub>3</sub>: jas@abc.mail.com
+Email<sub>4</sub>: richard@cse.unsw.EDU.AU
+
+(Email<sub>1</sub> ~ Email<sub>1</sub>) is true
+(Email<sub>1</sub> ~ Email<sub>2</sub>) is true
+(Email<sub>2</sub> ~ Email<sub>3</sub>) is false
+(Email<sub>3</sub> ~ Email<sub>2</sub>) is false      <i>(commutative)</i>
+(Email<sub>2</sub> ~ Email<sub>4</sub>) is true
+</pre>
+<li>
+<p>
+Other operations: &nbsp; <b><tt>&lt;&gt;</tt></b>, &nbsp; <b><tt>&gt;=</tt></b>, &nbsp;
+<b><tt>&lt;</tt></b>, &nbsp; <b><tt>&lt;=</tt></b>,  &nbsp; <b><tt>!~</tt></b>
+</p>
+<p>
+You should also implement the above operations, whose semantics is
+hopefully obvious from the three descriptions above.
+The operators can typically be implemented quite simply in terms of
+the first three operators.
+</p>
+</ul>
+<p>
+<b>Hint:</b> test out as many of your C functions as you can <em>outside</em>
+PostgreSQL (e.g. write a simple test driver) before you try to
+install them in PostgreSQL. This will make debugging much easier.
+</p>
+<p>
+You should ensure that your definitions <em>capture the full semantics of
+the operators</em> (e.g. specify commutativity if the operator is commutative).
+You should also ensure that you provide sufficient definitions so that
+users of the <tt>EmailAddr</tt> type can create hash-based indexes
+on an attribute of type <tt>EmailAddr</tt>.
+</p>
+
+<h2>Submission</h2>
+<p>
+You need to submit two files: <tt>email.c</tt> containing the C
+functions that implement the internals of the <tt>EmailAddr</tt>
+data type, and <tt>email.source</tt> containing the template SQL commands
+to install the <tt>EmailAddr</tt> data type into a PostgreSQL server.
+Do not submit the <tt>email.sql</tt> file, since it contains
+absolute file names which are not helpful in our test environment.
+If your system requires other <tt>*.c</tt> files, you should submit
+them along with the modified <tt>Makefile</tt> from the
+<tt>src/tutorial</tt> directory.
+</p>
+
+<p>Have fun, <i>jas</i></p>
+</body>
+</html>
