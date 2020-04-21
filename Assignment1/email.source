@@ -1,0 +1,142 @@
+CREATE FUNCTION emailaddr_in(cstring)
+   RETURNS EmailAddr
+   AS '_OBJWD_/email'
+   LANGUAGE C IMMUTABLE STRICT;
+
+
+CREATE FUNCTION emailaddr_out(EmailAddr)
+   RETURNS cstring
+   AS '_OBJWD_/email'
+   LANGUAGE C IMMUTABLE STRICT;
+
+
+CREATE TYPE emailaddr (
+   internallength = variable,
+   input = emailaddr_in,
+   output = emailaddr_out,
+   alignment = double
+);
+
+
+-- eg. we can use it in a table
+
+CREATE TABLE test_emailaddr (
+	a	emailaddr,
+   b  emailaddr
+);
+
+
+INSERT INTO test_emailaddr VALUES ('wui@b.c','cy@g.wf');
+INSERT INTO test_emailaddr VALUES ('hfghfh@weqg.thgytrh.yuityuh-rter.erd23435.daw','vya@h.y');
+
+SELECT * FROM test_emailaddr;
+
+
+
+CREATE FUNCTION emailaddr_lt(emailaddr, emailaddr) RETURNS bool
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION emailaddr_le(emailaddr, emailaddr) RETURNS bool
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION emailaddr_eq(emailaddr, emailaddr) RETURNS bool
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION emailaddr_ne(emailaddr, emailaddr) RETURNS bool
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION emailaddr_ge(emailaddr, emailaddr) RETURNS bool
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION emailaddr_gt(emailaddr, emailaddr) RETURNS bool
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION emailaddr_domain_eq(emailaddr, emailaddr) RETURNS bool
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION emailaddr_domain_ne(emailaddr, emailaddr) RETURNS bool
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR < (
+   leftarg = emailaddr, rightarg = emailaddr, procedure = emailaddr_lt,
+   commutator = > , negator = >= ,
+   restrict = scalarltsel, join = scalarltjoinsel
+);
+CREATE OPERATOR <= (
+   leftarg = emailaddr, rightarg = emailaddr, procedure = emailaddr_le,
+   commutator = >= , negator = > ,
+   restrict = scalarlesel, join = scalarlejoinsel
+);
+CREATE OPERATOR = (
+   leftarg = emailaddr, rightarg = emailaddr, procedure = emailaddr_eq,
+   commutator = = ,negator = <>,
+   restrict = eqsel, join = eqjoinsel
+);
+
+CREATE OPERATOR <> (
+   leftarg = emailaddr, rightarg = emailaddr, procedure = emailaddr_ne,
+   commutator = <> ,negator = =,
+   restrict = neqsel, join = neqjoinsel
+);
+
+CREATE OPERATOR >= (
+   leftarg = emailaddr, rightarg = emailaddr, procedure = emailaddr_ge,
+   commutator = <= , negator = < ,
+   restrict = scalargesel, join = scalargejoinsel
+);
+CREATE OPERATOR > (
+   leftarg = emailaddr, rightarg = emailaddr, procedure = emailaddr_gt,
+   commutator = < , negator = <= ,
+   restrict = scalargtsel, join = scalargtjoinsel
+);
+CREATE OPERATOR ~ (
+   leftarg = emailaddr, rightarg = emailaddr, procedure = emailaddr_domain_eq,
+   commutator = ~, negator = !~ ,
+   restrict = eqsel, join = eqjoinsel
+);
+
+CREATE OPERATOR !~ (
+   leftarg = emailaddr, rightarg = emailaddr, procedure = emailaddr_domain_eq,
+   commutator = !~, negator = ~ ,
+   restrict = neqsel, join = neqjoinsel
+);
+
+CREATE FUNCTION emailaddr_cmp(emailaddr, emailaddr) RETURNS int4
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION emailaddr_abs_hash(EmailAddr) RETURNS int4
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION emailaddr_domain_cmp(emailaddr, emailaddr) RETURNS int4
+   AS '_OBJWD_/email' LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR CLASS emailaddr_ops
+   DEFAULT FOR TYPE emailaddr USING btree AS
+        OPERATOR        1       < ,
+        OPERATOR        2       <= ,
+        OPERATOR        3       >= ,
+        OPERATOR        4       > ,
+        FUNCTION        1       emailaddr_cmp(emailaddr, emailaddr);
+
+
+CREATE OPERATOR CLASS emailaddr_abs_hash_ops
+    DEFAULT FOR TYPE EmailAddr USING hash AS
+        OPERATOR        1       = ,
+        FUNCTION        1       emailaddr_abs_hash(EmailAddr);
+
+
+
+CREATE OPERATOR CLASS emailaddr_abs_hash_ops
+    DEFAULT FOR TYPE EmailAddr USING hash AS
+        OPERATOR        1       = ,
+        FUNCTION        1       emailaddr_abs_hash(EmailAddr);
+
+
+
+
+
+
+
+
+INSERT INTO test_emailaddr VALUES ('abcfftghh32.sda53-r45df@yy342fr.rtre34efe.com', 'gbfctghh32.sdr45df@qweffr.rtfdgfgdre34efe.frsgrfg');
+
+CREATE INDEX test_emailaddr_ind ON test_emailaddr
+   USING btree(a emailaddr_ops);
+
+SELECT * from test_emailaddr where a = 'abcfftghh32.sda53-r45df@yy342fr.rtre34efe.com';
+SELECT * from test_emailaddr where a > 'abcfftghh32.sda53-r45df@yy342fr.rtre34efe.com';
+SELECT * from test_emailaddr where a < 'abcfftghh32.sda53-r45df@yy342fr.rtre34efe.com';
+SELECT * from test_emailaddr where a <> 'wui@b.c';
+SELECT * from test_emailaddr where a ~ 'wui@b.c';
+DROP TABLE test_emailaddr;
